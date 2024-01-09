@@ -13,9 +13,10 @@ import xml.etree.ElementTree as ET
 def get_text_from_file(file_name):
     tree = ET.parse(file_name)
     root = tree.getroot()
-    full_text, info, metadata = get_text_from_xml(root)
+    text, metadata = get_text_from_xml(root)
+    corrected_text, info = get_corrected_text(root)
     textregions = get_textregions_from_xml(root)
-    return full_text, info, metadata, textregions
+    return text, metadata, corrected_text, info, textregions
 
 def get_value_string(fields):
     value_string = fields.pop(0)
@@ -70,14 +71,21 @@ def expand_metadata(metadata_base, metadata_new, text_length):
                 metadata_base[key].append(add_length_to_offset(value, text_length))
 
 def get_text_from_xml(root):
+    text = ""
+    metadata = {}
+    for textline in root.findall(".//{*}TextLine"):
+        expand_metadata(metadata, process_textline_attrib(textline.attrib), len(text))
+        for unicode in textline.findall("./{*}TextEquiv/{*}Unicode"):
+            if unicode.text != None:
+                text += unicode.text + "\n"
+    return text, metadata
+
+def get_corrected_text(root):
     full_text = ""
     avgs, baselines, info = [], [], []
-    metadata = {}
     problem_counter = 0
     
-    for textline in root.findall(".//{*}TextLine"):
-        expand_metadata(metadata, process_textline_attrib(textline.attrib), len(full_text))
-        
+    for textline in root.findall(".//{*}TextLine"):       
         # get baseline coordinates and its average
         baseline = textline.find("./{*}Baseline")
         parsed_baseline = []
@@ -119,7 +127,7 @@ def get_text_from_xml(root):
         if text['text'] is not None:
             full_text += (text['text']) + "\n"
             
-    return full_text, info, metadata
+    return full_text, info
 
 def json_string_add_quotes(string):
     return re.sub("{ *", "{ '",
@@ -138,12 +146,6 @@ def convert_to_lists_coords(coords):
         y_coords.append(int(y))
     return x_coords, y_coords
 
-def get_extreme_points_coords(coords):
-    if coords == "":
-        return 0, 0, 0, 0
-    x_coords, y_coords = convert_to_lists_coords(coords)
-    return min(x_coords), max(x_coords), min(y_coords), max(y_coords)
-
 def get_textregions_from_xml(root):
     textregions = []
     for textregion in root.findall(".//{*}TextRegion"):
@@ -155,12 +157,12 @@ def print_with_color(string, color_code=1):
     print(f"\x1b[3{color_code}m{string}\x1b[m", end="")
 
 def read_files(data_dir):
-    full_texts, infos, metadata, textregions = ({}, {}, {}, {})
+    texts, metadata, corrected_texts, infos, textregions = ({}, {}, {}, {}, {})
     for file_name in os.listdir(data_dir):
         if re.search(".xml$", file_name):
             file_id = file_name[:-4]
             try:
-                full_texts[file_id], infos[file_id], metadata[file_id], textregions[file_id] = get_text_from_file(os.path.join(data_dir, file_name))
+                texts[file_id], metadata[file_id], corrected_texts[file_id], infos[file_id], textregions[file_id] = get_text_from_file(os.path.join(data_dir, file_name))
             except:
                 print_with_color(f"error processing file {file_id}\n")
-    return full_texts, infos, metadata, textregions
+    return texts, metadata, corrected_texts, infos, textregions
